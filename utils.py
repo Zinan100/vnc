@@ -473,3 +473,155 @@ async def get_shortlink(link):
     except Exception as e:
         logger.error(e)
         return f'{SHORTNER_SITE}/api?api={SHORTNER_API}&link={link}'
+
+async def get_shortlink(chat_id, link):
+    settings = await get_settings(chat_id) #fetching settings for group
+    if 'shortlink' in settings.keys():
+        URL = settings['shortlink']
+    else:
+        URL = SHORTLINK_URL
+    if 'shortlink_api' in settings.keys():
+        API = settings['shortlink_api']
+    else:
+        API = SHORTLINK_API
+    https = link.split(":")[0] #splitting https or http from link
+    if "http" == https: #if https == "http":
+        https = "https"
+        link = link.replace("http", https) #replacing http to https
+    if URL == "api.shareus.in":
+        url = f'https://{URL}/shortLink'
+        params = {
+            "token": API,
+            "format": "json",
+            "link": link,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                    data = await response.json(content_type="text/html")
+                    if data["status"] == "success":
+                        return data["shortlink"]
+                    else:
+                        logger.error(f"Error: {data['message']}")
+                        return f'https://{URL}/shortLink?token={API}&format=json&link={link}'
+        except Exception as e:
+            logger.error(e)
+            return f'https://{URL}/shortLink?token={API}&format=json&link={link}'
+    else:
+        url = f'https://{URL}/api'
+        params = {
+            "api": API,
+            "url": link,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                    data = await response.json()
+                    if data["status"] == "success":
+                        return data["shortenedUrl"]
+                    else:
+                        logger.error(f"Error: {data['message']}")
+                        if URL == 'clicksfly.com':
+                            return f'https://{URL}/api?api={API}&url={link}'
+                        else:
+                            return f'https://{URL}/api?api={API}&link={link}'
+        except Exception as e:
+            logger.error(e)
+            if URL == 'clicksfly.com':
+                return f'https://{URL}/api?api={API}&url={link}'
+            else:
+                return f'https://{URL}/api?api={API}&link={link}'
+
+async def get_verify_shorted_link(num, link):
+    if int(num) == 1:
+        API = SHORTLINK_API
+        URL = SHORTLINK_URL
+    else:
+        API = VERIFY2_API
+        URL = VERIFY2_URL
+    https = link.split(":")[0]
+    if "http" == https:
+        https = "https"
+        link = link.replace("http", https)
+
+    if URL == "api.shareus.in":
+        url = f"https://{URL}/shortLink"
+        params = {"token": API,
+                  "format": "json",
+                  "link": link,
+                  }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                    data = await response.json(content_type="text/html")
+                    if data["status"] == "success":
+                        return data["shortlink"]
+                    else:
+                        logger.error(f"Error: {data['message']}")
+                        return f'https://{URL}/shortLink?token={API}&format=json&link={link}'
+
+        except Exception as e:
+            logger.error(e)
+            return f'https://{URL}/shortLink?token={API}&format=json&link={link}'
+    else:
+        url = f'https://{URL}/api'
+        params = {'api': API,
+                  'url': link,
+                  }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, raise_for_status=True, ssl=False) as response:
+                    data = await response.json()
+                    if data["status"] == "success":
+                        return data["shortenedUrl"]
+                    else:
+                        logger.error(f"Error: {data['message']}")
+                        if URL == 'clicksfly.com':
+                            return f'https://{URL}/api?api={API}&url={link}'
+                        else:
+                            return f'https://{URL}/api?api={API}&link={link}'
+        except Exception as e:
+            logger.error(e)
+            if URL == 'clicksfly.com':
+                return f'https://{URL}/api?api={API}&url={link}'
+            else:
+                return f'https://{URL}/api?api={API}&link={link}'
+
+async def check_token(bot, userid, token):
+    user = await bot.get_users(userid)
+    if not await db.is_user_exist(user.id):
+        await db.add_user(user.id, user.first_name)
+        await bot.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(user.id, user.mention))
+    if user.id in TOKENS.keys():
+        TKN = TOKENS[user.id]
+        if token in TKN.keys():
+            is_used = TKN[token]
+            if is_used == True:
+                return False
+            else:
+                return True
+    else:
+        return False
+
+async def get_token(bot, userid, link, fileid):
+    user = await bot.get_users(userid)
+    if not await db.is_user_exist(user.id):
+        await db.add_user(user.id, user.first_name)
+        await bot.send_message(LOG_CHANNEL, script.LOG_TEXT_P.format(user.id, user.mention))
+    token = ''.join(random.choices(string.ascii_letters + string.digits, k=7))
+    TOKENS[user.id] = {token: False}
+    url = f"{link}verify-{user.id}-{token}-{fileid}"
+    status = await get_verify_status(user.id)
+    date_var = status["date"]
+    time_var = status["time"]
+    hour, minute, second = time_var.split(":")
+    year, month, day = date_var.split("-")
+    last_date, last_time = str((datetime(year=int(year), month=int(month), day=int(day), hour=int(hour), minute=int(minute), second=int(second)))-timedelta(hours=12)).split(" ")
+    tz = pytz.timezone('Asia/Kolkata')
+    curr_date, curr_time = str(datetime.now(tz)).split(" ")
+    if last_date == curr_date:
+        vr_num = 2
+    else:
+        vr_num = 1
+    shortened_verify_url = await get_verify_shorted_link(vr_num, url)
+    return str(shortened_verify_url)
